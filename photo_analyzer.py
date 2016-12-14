@@ -57,14 +57,57 @@ def linalg(data):
     return m, c
 
 
+def good_data(data, y_lr_e):
+    y_lr_e_std = y_lr_e.std()
+    y_mask = y_lr_e >= y_lr_e_std
+    return data.ix[y_mask]
+
+
+def bad_data(data, y_lr_e):
+    y_lr_e_std = y_lr_e.std()
+    y_mask = y_lr_e >= -y_lr_e_std
+    return data.ix[y_mask]
+
+
 if __name__ == "__main__":
     data = read_csv()
     m, c = linalg(data)
 
+    # 日付を整数に変換
     x = data["日付"]
     x = np.array([v.timestamp() for v in x])
     y = data["f"]
+    y_lr = m * x + c
+    y_lr_e = y - y_lr
+    y_lr_e_mean = y_lr_e.mean()
+    y_lr_e_std = y_lr_e.std()
+
     plt.plot(x, y, "o")
-    plt.plot(x, (m * x + c))
+    plt.plot(x, y_lr)
     plt.savefig('date_f.png')
+    plt.clf()
+
+    plt.plot(x, x * 0 + y_lr_e_mean, color="#808080")
+    plt.plot(x, x * 0 + y_lr_e_std, color="#ff4040")
+    plt.plot(x, x * 0 - y_lr_e_std, color="#ff4040")
+    plt.plot(x, y_lr_e)
+    plt.savefig('date_e.png')
+
+    # 回帰誤差を２番目の列に挿入する
+    data["回帰誤差"] = y_lr_e
+    columns = data.columns.values
+    columns = np.delete(columns, np.where(columns == "回帰誤差"))
+    columns = np.insert(columns, 1, "回帰誤差")
+    data = data.ix[:, columns]
+    all = data.sort_values(by="回帰誤差", ascending=False)
+    all.to_csv("./data/instagram_data_all.csv", index=False)
+
+    good = good_data(data, y_lr_e)
+    good = good.sort_values(by="回帰誤差", ascending=False)
+    good.to_csv("./data/instagram_data_good.csv", index=False)
+
+    bad = bad_data(data, y_lr_e)
+    bad = bad.sort_values(by="回帰誤差", ascending=True)
+    bad.to_csv("./data/instagram_data_bad.csv", index=False)
+
     pass
