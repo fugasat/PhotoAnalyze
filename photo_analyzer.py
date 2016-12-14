@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 def read_csv():
     df = pd.read_csv("data/instagram_data.csv")
 
+    # 不要な列を削除
+    df = df.drop("低い", axis=1)
+    df = df.drop("近い", axis=1)
+
     # nanを0に変換
     df.ix[:, "c":"踏切"] = df.ix[:, "c":"踏切"].fillna(0)
 
@@ -13,8 +17,7 @@ def read_csv():
     df["日付"] = pd.to_datetime(df["日付"])
 
     # 登録された車両形式を抽出
-    #df.ix[:, 17:23] = df.ix[:, 2:23].fillna(0)
-    type_df = df.iloc[:, 17:23].fillna("0") # 17〜23列を取得
+    type_df = df.iloc[:, 15:21].fillna("0") # 17〜23列を取得
     type_array = type_df.as_matrix().flatten() # 1次配列に変換
     type_array = type_array.astype('str') # 文字列に変換
     type_array = np.unique(type_array) # 重複値を除外
@@ -27,9 +30,14 @@ def read_csv():
     no_feature = []
     for i, row in df.iterrows():
         # 風景の特徴が無いデータを「特徴なし」とする
-        no_feature.append(row["森林" : "踏切"].sum())
+        feature_count = row["森林" : "踏切"].sum()
+        if feature_count > 0:
+            feature_count = 0
+        else:
+            feature_count = 1
+        no_feature.append(feature_count)
         # 特定の車両が存在するかどうかチェック
-        types = row[17:23].astype('str')
+        types = row[15:21].astype('str')
         for item in type_array:
             exists = item in types.as_matrix()
             array = type_dic[item]
@@ -37,7 +45,7 @@ def read_csv():
             type_dic[item] = array
 
     # 車両名を格納する列を削除
-    df = df.iloc[:, :17]
+    df = df.iloc[:, :15]
 
     # 風景の特徴が無いデータのカラムを追加
     df["特徴なし"] = no_feature
