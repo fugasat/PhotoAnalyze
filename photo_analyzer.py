@@ -39,7 +39,7 @@ def read_csv():
     no_feature = []
     for i, row in df.iterrows():
         # 風景の特徴が無いデータを「特徴なし」とする
-        feature_count = row["森林" : "踏切"].sum()
+        feature_count = row["森林":"踏切"].sum()
         if feature_count > 0:
             feature_count = 0
         else:
@@ -132,7 +132,8 @@ def bad_data(data, y_lr_e):
 
 
 def train_pls(train_x, train_y, test_x, test_y):
-    print("train : PLS")
+    print()
+    print("**** Train : PLS ****")
 
     # 学習
     clf = PLSRegression(n_components=15, scale=True)
@@ -141,29 +142,27 @@ def train_pls(train_x, train_y, test_x, test_y):
     # 学習結果を確認
     test_pred = clf.predict(test_x)
     print("test_pred" + str(test_pred))
+    print_coef(clf)
 
 
-def train_cv(clf, x, y, train_x, train_y, test_x, test_y):
+def train_cv(clf, x, y):
+    print("- Train CV -")
     scores = []
     cv = KFold(len(x), n_folds=10)
 
     for train, test in cv:
         x_train, y_train = x[train], y[train]
         x_test, y_test = x[test], y[test]
-        clf.fit(x, y)
+        clf.fit(x_train, y_train)
         scores.append(clf.score(x_test, y_test))
-        #precision, recall, thresholds = precision_recall_curve(y_test, clf.predict(x_test))
-        #medium = np.argsort(scores)[len(scores) / 2]
-        #thresholds = np.hstack(([0], thresholds[medium]))
-        #idx80 = precision >= 0.8
-        #print("P=%.2f R=%.2f thresh=%.2f" % (precision[idx80][0], recall[idx80][0], thresholds[idx80][0]))
         pass
 
     print("Mean(scores)=%.5f Stddev(scores)=%.5f" % (np.mean(scores), np.std(scores)))
     return clf
 
 
-def train(clf, x, y, train_x, train_y, test_x, test_y):
+def train(clf, train_x, train_y, test_x, test_y):
+    print("- Train -")
     # 学習
     clf.fit(train_x, train_y)
 
@@ -174,24 +173,52 @@ def train(clf, x, y, train_x, train_y, test_x, test_y):
     print()
 
 
+def print_coef(clf):
+    coef = clf.coef_
+    data_coef = data.drop("日付", axis=1)
+    data_coef = data_coef.drop("f", axis=1)
+    data_coef = data_coef.drop("c", axis=1)
+    col = data_coef.columns
+    index = 0
+    for c in col:
+        if coef[0][index] > 0:
+            print("(!)" + c + ":" + str(coef[0][index]))
+        else:
+            print("   " + c + ":" + str(coef[0][index]))
+        index = index + 1
+
+
 def train_svm(x, y, train_x, train_y, test_x, test_y):
-    print("train : SVM")
-    train_cv(svm.SVC(), x, y, train_x, train_y, test_x, test_y)
+    print()
+    print("**** Train : SVM ****")
+    clf = svm.SVC()
+    train(clf, train_x, train_y, test_x, test_y)
+    train_cv(clf, x, y)
 
 
 def train_random_forest(x, y, train_x, train_y, test_x, test_y):
-    print("train : Random Forest")
-    train_cv(RandomForestClassifier(n_estimators=100), x, y, train_x, train_y, test_x, test_y)
+    print()
+    print("**** Train : Random Forest ****")
+    clf = RandomForestClassifier(n_estimators=100)
+    train(clf, train_x, train_y, test_x, test_y)
+    train_cv(clf, x, y)
 
 
 def train_kn(x, y, train_x, train_y, test_x, test_y):
-    print("train : KNeighbors")
-    train_cv(KNeighborsClassifier(n_neighbors=2), x, y, train_x, train_y, test_x, test_y)
+    print()
+    print("**** Train : KNeighbors ****")
+    clf = KNeighborsClassifier(n_neighbors=2)
+    train(clf, train_x, train_y, test_x, test_y)
+    train_cv(clf, x, y)
 
 
 def train_logistic_regression(x, y, train_x, train_y, test_x, test_y):
-    print("train : LogisticRegression")
-    return train_cv(LogisticRegression(), x, y, train_x, train_y, test_x, test_y)
+    print()
+    print("**** Train : LogisticRegression ****")
+    clf = LogisticRegression()
+    train(clf, train_x, train_y, test_x, test_y)
+    train_cv(clf, x, y)
+    print_coef(clf)
 
 
 if __name__ == "__main__":
@@ -203,7 +230,7 @@ if __name__ == "__main__":
     x = np.array([v.timestamp() for v in x])
     y = data["f"]
     y_lr = m * x + c
-    y_lr_e = y - y_lr
+    y_lr_e = y - (m * x + c)
     y_lr_e_mean = y_lr_e.mean()
     y_lr_e_std = y_lr_e.std()
 
@@ -221,28 +248,15 @@ if __name__ == "__main__":
     print()
 
     # 教師データ、テストデータ生成
-    x, y, y_e, train_x, train_y, train_y_e, test_x, test_y, test_y_e = create_dataset(data, y_lr_e, 100)
+    x, y, y_e, train_x, train_y, train_y_e, test_x, test_y, test_y_e = create_dataset(data, y_lr_e, 30)
 
     # 学習
     train_kn(x, y, train_x, train_y, test_x, test_y)
     train_svm(x, y, train_x, train_y, test_x, test_y)
     train_random_forest(x, y, train_x, train_y, test_x, test_y)
-    clf = train_logistic_regression(x, y, train_x, train_y, test_x, test_y)
+    train_logistic_regression(x, y, train_x, train_y, test_x, test_y)
 
     print()
-
-    coef = clf.coef_
-    data_coef = data.drop("日付", axis=1)
-    data_coef = data_coef.drop("f", axis=1)
-    data_coef = data_coef.drop("c", axis=1)
-    col = data_coef.columns
-    index = 0
-    for c in col:
-        if coef[0][index] > 0.4:
-            print("(!)" + c + ":" + str(coef[0][index]))
-        else:
-            print("   " + c + ":" + str(coef[0][index]))
-        index = index + 1
 
     # 回帰誤差を２番目の列に挿入する
     data["回帰誤差"] = y_lr_e
