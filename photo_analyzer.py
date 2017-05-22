@@ -20,13 +20,13 @@ def read_csv():
     df = df.drop("近い", axis=1)
 
     # nanを0に変換
-    df.ix[:, "c":"踏切"] = df.ix[:, "c":"踏切"].fillna(0)
+    df.ix[:, "f":"JR"] = df.ix[:, "f":"JR"].fillna(0)
 
     # 日付文字列をdatetimeに変換
     df["日付"] = pd.to_datetime(df["日付"])
 
     # 登録された車両形式を抽出
-    type_df = df.iloc[:, 15:21].fillna("0") # 17〜23列を取得
+    type_df = df.iloc[:, 25:31].fillna("0") # 17〜23列を取得
     type_array = type_df.as_matrix().flatten() # 1次配列に変換
     type_array = type_array.astype('str') # 文字列に変換
     type_array = np.unique(type_array) # 重複値を除外
@@ -37,16 +37,27 @@ def read_csv():
         type_dic[item] = []
 
     no_feature = []
+    no_area = []
     for i, row in df.iterrows():
         # 風景の特徴が無いデータを「特徴なし」とする
+        aaa = row["森林":"踏切"]
         feature_count = row["森林":"踏切"].sum()
         if feature_count > 0:
             feature_count = 0
         else:
             feature_count = 1
         no_feature.append(feature_count)
+
+        # 地域の特徴が無いデータを「特徴なし」とする
+        area_count = row["北海道":"九州"].sum()
+        if area_count > 0:
+            area_count = 0
+        else:
+            area_count = 1
+        no_area.append(area_count)
+
         # 特定の車両が存在するかどうかチェック
-        types = row[15:21].astype('str')
+        types = row[25:31].astype('str')
         for item in type_array:
             exists = item in types.as_matrix()
             array = type_dic[item]
@@ -54,10 +65,11 @@ def read_csv():
             type_dic[item] = array
 
     # 車両名を格納する列を削除
-    df = df.iloc[:, :15]
+    df = df.iloc[:, :25]
 
-    # 風景の特徴が無いデータのカラムを追加
-    df["特徴なし"] = no_feature
+    # 特徴が無いデータのカラムを追加
+    df["scene特徴なし"] = no_feature
+    df["area特徴なし"] = no_area
 
     # 特定の車両が存在するかどうか表すカラムを追加
     for key, value in type_dic.items():
@@ -175,13 +187,14 @@ def train(clf, train_x, train_y, test_x, test_y):
 
 def print_coef(clf):
     coef = clf.coef_
-    data_coef = data.drop("日付", axis=1)
+    data_coef = data.drop("ID", axis=1)
+    data_coef = data_coef.drop("日付", axis=1)
     data_coef = data_coef.drop("f", axis=1)
     data_coef = data_coef.drop("c", axis=1)
     col = data_coef.columns
     index = 0
     for c in col:
-        if coef[0][index] > 0:
+        if coef[0][index] > 0.4:
             print("(!)" + c + ":" + str(coef[0][index]))
         else:
             print("   " + c + ":" + str(coef[0][index]))
