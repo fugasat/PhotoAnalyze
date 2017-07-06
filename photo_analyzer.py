@@ -16,8 +16,8 @@ def read_csv():
     df = pd.read_csv("data/instagram_data.csv")
 
     # 不要な列を削除
-    df = df.drop("低い", axis=1)
-    df = df.drop("近い", axis=1)
+    #df = df.drop("低い", axis=1)
+    #df = df.drop("近い", axis=1)
 
     # nanを0に変換
     df.ix[:, "f":"JR"] = df.ix[:, "f":"JR"].fillna(0)
@@ -26,7 +26,7 @@ def read_csv():
     df["日付"] = pd.to_datetime(df["日付"])
 
     # 登録された車両形式を抽出
-    type_df = df.iloc[:, 25:31].fillna("0") # 17〜23列を取得
+    type_df = df.iloc[:, 27:33].fillna("0") # 17〜23列を取得
     type_array = type_df.as_matrix().flatten() # 1次配列に変換
     type_array = type_array.astype('str') # 文字列に変換
     type_array = np.unique(type_array) # 重複値を除外
@@ -38,9 +38,9 @@ def read_csv():
 
     no_feature = []
     no_area = []
+    main_model = []
     for i, row in df.iterrows():
         # 風景の特徴が無いデータを「特徴なし」とする
-        aaa = row["森林":"踏切"]
         feature_count = row["森林":"踏切"].sum()
         if feature_count > 0:
             feature_count = 0
@@ -57,19 +57,26 @@ def read_csv():
         no_area.append(area_count)
 
         # 特定の車両が存在するかどうかチェック
-        types = row[25:31].astype('str')
+        types = row[27:33].astype('str')
+        first_model = None
         for item in type_array:
             exists = item in types.as_matrix()
+            if first_model is None and exists:
+                first_model = item
             array = type_dic[item]
             array.append(int(exists))
             type_dic[item] = array
 
+        # 先頭の車両データをメインの車両とする
+        main_model.append(first_model)
+
     # 車両名を格納する列を削除
-    df = df.iloc[:, :25]
+    df = df.iloc[:, :27]
 
     # 特徴が無いデータのカラムを追加
     df["scene特徴なし"] = no_feature
     df["area特徴なし"] = no_area
+    df["main_model"] = main_model
 
     # 特定の車両が存在するかどうか表すカラムを追加
     for key, value in type_dic.items():
@@ -92,19 +99,22 @@ def good_data(data, y_lr_e):
     return data.ix[y_mask]
 
 
-def create_dataset(data, y_lr_e, num_train=30):
-    y_lr_e_std = y_lr_e.std() #* 0
+def create_dataset(data, y_lr_e, num_train=70):
+    y_lr_e_std = y_lr_e.std() / 2  # いいね数が標準偏差を超えたものを「人気データ」とラベリングする
+    #y_lr_e_std = y_lr_e.mean()  # いいね数が平均を超えたものを「人気データ」とラベリングする
     y_mask = y_lr_e >= y_lr_e_std
 
     data = data.drop("日付", axis=1)
     data = data.drop("f", axis=1)
     data = data.drop("c", axis=1)
+    data = data.drop("main_model", axis=1)
 
     pos_data = data.ix[y_mask]
     neg_data = data.ix[~y_mask]
 
     pos_label = np.ones(pos_data.shape[0])
     neg_label = np.zeros(neg_data.shape[0])
+
     pos_label_e = y_lr_e[y_mask]
     neg_label_e = y_lr_e[~y_mask]
 
@@ -158,6 +168,13 @@ def train_pls(train_x, train_y, test_x, test_y):
 
 
 def train_cv(clf, x, y):
+    """
+    Cross Validation
+    :param clf:
+    :param x:
+    :param y:
+    :return:
+    """
     print("- Train CV -")
     scores = []
     cv = KFold(len(x), n_folds=10)
@@ -200,6 +217,24 @@ def print_coef(clf):
             print("   " + c + ":" + str(coef[0][index]))
         index = index + 1
 
+    print()
+    print("Ranking")
+    score_dict = {}
+    for i, row in data.iterrows():
+        id = row["ID"]
+        score = 0
+        index = 0
+        for c in col:
+            feature = row[c]
+            score += feature * coef[0][index]
+            index = index + 1
+            pass
+        score_dict[id] = score
+
+    score_rank = sorted(score_dict.items(), key=lambda x:x[1], reverse=True)
+    for rank in range(10):
+        print(score_rank[rank])
+
 
 def train_svm(x, y, train_x, train_y, test_x, test_y):
     print()
@@ -236,15 +271,28 @@ def train_logistic_regression(x, y, train_x, train_y, test_x, test_y):
 
 if __name__ == "__main__":
     data = read_csv()
-    m, c = linalg(data)
 
-    # 日付を整数に変換
+    #
+    # いいねの数を正規化する
+    #
+
+    # (x軸)日付を整数に変換
     x = data["日付"]
     x = np.array([v.timestamp() for v in x])
+
+    # (y軸)いいねの数を取得
     y = data["f"]
+
+    # 回帰直線を取得
+    m, c = linalg(data)
     y_lr = m * x + c
+
+    # 回帰直線といいね数の差分を取得する
+    # (回帰直線が水平になるように(y軸)いいね数を調整する)
     y_lr_e = y - (m * x + c)
-    y_lr_e_mean = y_lr_e.mean()
+
+    # 差分の平均と分散を取得する
+    y_lr_e_mean = y_lr_e.mean()  # ※正規化後の平均なので0に近い値になる
     y_lr_e_std = y_lr_e.std()
 
     plt.plot(x, y, "o")
@@ -261,13 +309,13 @@ if __name__ == "__main__":
     print()
 
     # 教師データ、テストデータ生成
-    x, y, y_e, train_x, train_y, train_y_e, test_x, test_y, test_y_e = create_dataset(data, y_lr_e, 30)
+    x, y, y_e, train_x, train_y, train_y_e, test_x, test_y, test_y_e = create_dataset(data, y_lr_e)
 
     # 学習
-    train_kn(x, y, train_x, train_y, test_x, test_y)
+    #train_kn(x, y, train_x, train_y, test_x, test_y)
     train_svm(x, y, train_x, train_y, test_x, test_y)
-    train_random_forest(x, y, train_x, train_y, test_x, test_y)
-    train_logistic_regression(x, y, train_x, train_y, test_x, test_y)
+    #train_random_forest(x, y, train_x, train_y, test_x, test_y)
+    #train_logistic_regression(x, y, train_x, train_y, test_x, test_y)
 
     print()
 
@@ -277,7 +325,7 @@ if __name__ == "__main__":
     columns = np.delete(columns, np.where(columns == "回帰誤差"))
     columns = np.insert(columns, 1, "回帰誤差")
     data = data.ix[:, columns]
-    all = data.sort_values(by="回帰誤差", ascending=False)
+    all = data.sort_values(by="ID", ascending=True)
     all.to_csv("./data/instagram_data_all.csv", index=False)
 
     good = good_data(data, y_lr_e)
