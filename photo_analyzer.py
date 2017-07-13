@@ -58,11 +58,9 @@ def read_csv():
 
         # 特定の車両が存在するかどうかチェック
         types = row[27:33].astype('str')
-        first_model = None
+        first_model = row[27]  # 最初に指定された車両をメインとする
         for item in type_array:
             exists = item in types.as_matrix()
-            if first_model is None and exists:
-                first_model = item
             array = type_dic[item]
             array.append(int(exists))
             type_dic[item] = array
